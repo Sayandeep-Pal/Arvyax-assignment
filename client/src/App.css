@@ -1,0 +1,249 @@
+/* ─── Layout ──────────────────────────────────────────────────── */
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.app-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  background: #1a1a2e;
+  color: #e0e0e0;
+  padding: 1rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.user-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.user-bar input {
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid #555;
+  background: #2a2a3e;
+  color: #e0e0e0;
+}
+
+.app-main {
+  display: flex;
+  flex: 1;
+  gap: 1.5rem;
+  padding: 1.5rem;
+}
+
+.sidebar {
+  width: 340px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.content {
+  flex: 1;
+}
+
+/* ─── Journal Form ──────────────────────────────────────────────── */
+.journal-form {
+  background: #2a2a3e;
+  padding: 1.2rem;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.journal-form h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1.1rem;
+  color: #a0c4ff;
+}
+
+.journal-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+  color: #ccc;
+}
+
+.journal-form select,
+.journal-form textarea {
+  padding: 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #444;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  resize: vertical;
+}
+
+/* ─── Entry List ────────────────────────────────────────────────── */
+.entry-list h2 {
+  margin-top: 0;
+  color: #a0c4ff;
+}
+
+.entry-card {
+  background: #2a2a3e;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.entry-card header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.ambience-badge {
+  background: #3a3a5e;
+  color: #a0c4ff;
+  padding: 0.15rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  text-transform: capitalize;
+}
+
+.entry-card time {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.entry-text {
+  margin: 0.4rem 0 0.8rem;
+  line-height: 1.5;
+}
+
+.analysis-result {
+  background: #1a1a2e;
+  border-left: 3px solid #a0c4ff;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0 4px 4px 0;
+  font-size: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+/* ─── Insight Panel ─────────────────────────────────────────────── */
+.insight-panel {
+  background: #2a2a3e;
+  border-radius: 8px;
+  padding: 1.2rem;
+}
+
+.insight-panel h2 {
+  margin: 0 0 0.8rem;
+  font-size: 1.1rem;
+  color: #a0c4ff;
+}
+
+.insight-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+.insight-card {
+  background: #1a1a2e;
+  border-radius: 6px;
+  padding: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.insight-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #e0e0e0;
+  text-transform: capitalize;
+}
+
+.insight-label {
+  font-size: 0.7rem;
+  color: #888;
+  text-align: center;
+}
+
+.keyword-section {
+  font-size: 0.85rem;
+  color: #ccc;
+}
+
+.keyword-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.keyword-pill {
+  background: #3a3a5e;
+  color: #a0c4ff;
+  padding: 0.15rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.78rem;
+}
+
+/* ─── Shared ────────────────────────────────────────────────────── */
+button {
+  padding: 0.5rem 1rem;
+  background: #4a4acf;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button:not(:disabled):hover {
+  background: #5a5adf;
+}
+
+.analyze-btn {
+  background: #2e7d32;
+}
+
+.analyze-btn:not(:disabled):hover {
+  background: #388e3c;
+}
+
+.error {
+  color: #ff6b6b;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.empty-state {
+  color: #888;
+  font-style: italic;
+}
+
+.loading {
+  color: #888;
+}
