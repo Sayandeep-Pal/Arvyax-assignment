@@ -22,10 +22,11 @@ export default function App() {
   const [insightsError, setInsightsError] = useState(null);
 
   const refreshInsights = useCallback(async () => {
+    if (!userId.trim()) return;
     setInsightsLoading(true);
     setInsightsError(null);
     try {
-      const data = await getInsights(userId);
+      const data = await getInsights(userId.trim());
       setInsights(data);
     } catch (err) {
       setInsightsError(err.response?.data?.error || "Failed to load insights.");
@@ -35,9 +36,15 @@ export default function App() {
   }, [userId]);
 
   useEffect(() => {
+    if (!userId.trim()) {
+      setEntries([]);
+      setInsights(null);
+      setInsightsError(null);
+      return;
+    }
     const fetchAll = async () => {
       try {
-        const data = await getEntries(userId);
+        const data = await getEntries(userId.trim());
         setEntries(data);
       } catch {
         setEntries([]);
@@ -67,6 +74,7 @@ export default function App() {
             id="userId"
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
+            onBlur={(e) => { if (!e.target.value.trim()) setUserId(DEFAULT_USER); }}
             placeholder="Enter user ID"
           />
         </div>
