@@ -1,9 +1,13 @@
 import { useState } from "react";
-import { analyzeText } from "../services/api";
+import { analyzeStream } from "../services/api";
 
 /**
  * Renders a list of journal entries.
- * Each entry can be individually analysed via the Gemini LLM.
+ *
+ * Each entry's Analyze button uses the SSE streaming endpoint, showing a
+ * live typing effect as the Gemini model generates the response. Once the
+ * stream ends the structured analysis (emotion, keywords, summary) is
+ * rendered in place and persisted on the parent state via `onUpdated`.
  *
  * Props:
  * - entries   {Array}    Array of journal entry documents.
@@ -11,19 +15,30 @@ import { analyzeText } from "../services/api";
  */
 export default function EntryList({ entries, onUpdated }) {
   const [loadingId, setLoadingId] = useState(null);
+  const [streamingText, setStreamingText] = useState("");
   const [error, setError] = useState(null);
 
-  const handleAnalyze = async (entry) => {
+  const handleAnalyze = (entry) => {
     setLoadingId(entry._id);
+    setStreamingText("");
     setError(null);
-    try {
-      const analysis = await analyzeText({ text: entry.text, entryId: entry._id });
-      onUpdated({ ...entry, analysis });
-    } catch (err) {
-      setError(err.response?.data?.error || "Analysis failed.");
-    } finally {
-      setLoadingId(null);
-    }
+
+    analyzeStream(
+      { text: entry.text, entryId: entry._id },
+      {
+        onChunk: (chunk) => setStreamingText((prev) => prev + chunk),
+        onDone: (analysis) => {
+          setLoadingId(null);
+          setStreamingText("");
+          onUpdated({ ...entry, analysis });
+        },
+        onError: (msg) => {
+          setLoadingId(null);
+          setStreamingText("");
+          setError(msg);
+        },
+      }
+    );
   };
 
   if (entries.length === 0) {
@@ -55,13 +70,14 @@ export default function EntryList({ entries, onUpdated }) {
                 <strong>Summary:</strong> {entry.analysis.summary}
               </p>
             </div>
+          ) : loadingId === entry._id ? (
+            <div className="analysis-streaming">
+              <span className="streaming-label">Analyzing…</span>
+              {streamingText && <pre className="streaming-text">{streamingText}</pre>}
+            </div>
           ) : (
-            <button
-              className="analyze-btn"
-              onClick={() => handleAnalyze(entry)}
-              disabled={loadingId === entry._id}
-            >
-              {loadingId === entry._id ? "Analyzing…" : "Analyze"}
+            <button className="analyze-btn" onClick={() => handleAnalyze(entry)}>
+              Analyze
             </button>
           )}
         </article>
@@ -69,3 +85,4 @@ export default function EntryList({ entries, onUpdated }) {
     </section>
   );
 }
+

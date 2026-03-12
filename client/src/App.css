@@ -247,3 +247,29 @@ button:not(:disabled):hover {
 .loading {
   color: #888;
 }
+
+/* ─── Streaming Analysis ────────────────────────────────────────── */
+.analysis-streaming {
+  background: #1a1a2e;
+  border-left: 3px solid #f0a500;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0 4px 4px 0;
+}
+
+.streaming-label {
+  font-size: 0.82rem;
+  color: #f0a500;
+  display: block;
+  margin-bottom: 0.3rem;
+}
+
+.streaming-text {
+  font-family: inherit;
+  font-size: 0.82rem;
+  color: #ccc;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  max-height: 8rem;
+  overflow-y: auto;
+}

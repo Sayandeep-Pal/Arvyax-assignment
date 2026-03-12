@@ -11,7 +11,7 @@ An AI-assisted journaling system built with the MERN stack. Users write journal 
 | Frontend | React 19 + Vite                   |
 | Backend  | Node.js + Express 5               |
 | Database | MongoDB + Mongoose                |
-| LLM      | Google Gemini 2.0 Flash           |
+| LLM      | Google Gemini 2.5 Flash           |
 | HTTP     | Axios                             |
 
 ---
@@ -107,6 +107,8 @@ Fetch all entries for a user (newest first).
 
 Analyse a text snippet with the Gemini LLM. If an `entryId` is supplied and the entry already has a stored analysis, the cached result is returned instead of making a new LLM call.
 
+Rate limit: **10 requests / minute** per IP.
+
 **Request body**
 
 ```json
@@ -125,6 +127,31 @@ Analyse a text snippet with the Gemini LLM. If an `entryId` is supplied and the 
   "summary": "User experienced relaxation during the forest session"
 }
 ```
+
+---
+
+### POST `/api/journal/analyze/stream`
+
+Same as `/analyze` but streams the Gemini response using **Server-Sent Events (SSE)**. The client receives incremental text chunks while the model is generating, followed by a final parsed result event.
+
+Rate limit: **10 requests / minute** per IP.
+
+**Request body** — same as `/analyze`.
+
+**SSE event stream**
+
+```
+event: chunk
+data: "I felt"
+
+event: chunk
+data: " calm..."
+
+event: done
+data: {"emotion":"calm","keywords":["rain","nature","peace"],"summary":"..."}
+```
+
+If a cached result exists the server emits a single `done` event immediately.
 
 ---
 
@@ -149,34 +176,62 @@ Aggregated insights derived from all analysed entries.
 
 ```
 Arvyax-assignment/
+├── docker-compose.yml       # Full-stack Docker setup
 ├── client/                  # React + Vite frontend
+│   ├── Dockerfile
+│   ├── nginx.conf           # Nginx reverse proxy (proxies /api → server)
 │   └── src/
 │       ├── components/
-│       │   ├── EntryList.jsx
+│       │   ├── EntryList.jsx    # Entry cards with streaming Analyze button
 │       │   ├── InsightPanel.jsx
 │       │   └── JournalForm.jsx
 │       ├── services/
-│       │   └── api.js       # Axios wrappers
+│       │   └── api.js           # Axios + SSE fetch helpers
 │       └── App.jsx
 └── server/                  # Express API
+    ├── Dockerfile
     ├── models/
-    │   └── JournalEntry.js  # Mongoose schema
+    │   └── JournalEntry.js      # Mongoose schema
     ├── routes/
-    │   └── journal.js       # All /api/journal routes
+    │   └── journal.js           # All /api/journal routes
     ├── services/
-    │   └── geminiService.js # Gemini LLM integration
-    └── index.js             # App entry point
+    │   └── geminiService.js     # Gemini LLM integration + LRU cache + streaming
+    └── index.js                 # App entry point
 ```
+
+---
+
+## Running with Docker
+
+Make sure Docker and Docker Compose are installed, then:
+
+```bash
+# Copy and fill in the env file
+cp server/.env.example server/.env   # set GEMINI_API_KEY
+
+# Build and start all services (MongoDB + API server + Nginx client)
+docker compose up --build
+```
+
+Open [http://localhost](http://localhost).
+
+The `docker-compose.yml` starts three services:
+- **mongo** — MongoDB 7 with a named volume for persistence
+- **server** — Express API on port 5000 (internal)
+- **client** — React app served by Nginx on port 80, with `/api/*` proxied to the server
 
 ---
 
 ## Bonus Features Implemented
 
-| Feature                  | Details                                                               |
-| ------------------------ | --------------------------------------------------------------------- |
-| Analysis caching         | `analysis` field stored on the MongoDB document; skips LLM on repeat |
-| Rate limiting            | 100 requests / 15 min per IP via `express-rate-limit`                 |
-| Centralised error handler| Global Express error middleware with consistent JSON error format     |
+| Feature                   | Details                                                                                             |
+| ------------------------- | --------------------------------------------------------------------------------------------------- |
+| Streaming LLM response    | `POST /api/journal/analyze/stream` — SSE endpoint; frontend shows live typing while Gemini streams |
+| Analysis caching (LRU)    | In-process LRU cache (500 entries, 1 h TTL) keyed by SHA-256 hash of text — no repeat LLM calls    |
+| Analysis caching (DB)     | `analysis` sub-document persisted on the MongoDB entry; instant cache hit on re-request             |
+| Rate limiting (global)    | 100 requests / 15 min per IP on all `/api/*` routes                                                 |
+| Rate limiting (analysis)  | Stricter 10 requests / 1 min per IP on both `/analyze` endpoints                                    |
+| Docker setup              | `Dockerfile` for server & client + `docker-compose.yml` with MongoDB, Express, and Nginx            |
 
 ---
 

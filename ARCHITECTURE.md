@@ -3,20 +3,22 @@
 ## System Overview
 
 ```
-┌─────────────┐   HTTP/JSON   ┌───────────────────────────┐
-│  React SPA  │ ◄───────────► │  Express API  (port 5000) │
-│ (Vite dev   │               │                           │
-│  port 5173) │               │  /api/journal  (router)   │
-└─────────────┘               │  /api/journal/analyze     │
-                              │  /api/journal/insights/:id│
-                              └────────────┬──────────────┘
-                                           │
-                         ┌─────────────────┼──────────────────┐
-                         │                 │                  │
-                   ┌─────▼──────┐  ┌───────▼──────┐  ┌──────▼──────┐
-                   │  MongoDB   │  │ Gemini 2.0   │  │  In-process │
-                   │ (Mongoose) │  │ Flash (LLM)  │  │  LRU cache  │
-                   └────────────┘  └──────────────┘  └─────────────┘
+┌─────────────┐  HTTP/JSON + SSE  ┌──────────────────────────────────┐
+│  React SPA  │ ◄───────────────► │  Express API  (port 5000)        │
+│ (Vite/Nginx │                   │                                  │
+│  port 5173) │                   │  POST /api/journal               │
+└─────────────┘                   │  GET  /api/journal/:userId       │
+                                  │  POST /api/journal/analyze       │
+                                  │  POST /api/journal/analyze/stream│
+                                  │  GET  /api/journal/insights/:id  │
+                                  └──────────────┬───────────────────┘
+                                                 │
+                              ┌──────────────────┼──────────────────────┐
+                              │                  │                      │
+                        ┌─────▼──────┐  ┌────────▼──────┐  ┌──────────▼────────┐
+                        │  MongoDB   │  │  Gemini 2.5   │  │  In-process LRU   │
+                        │ (Mongoose) │  │  Flash (LLM)  │  │  cache (lru-cache)│
+                        └────────────┘  └───────────────┘  └───────────────────┘
 ```
 
 ---
@@ -52,7 +54,7 @@
 
 4. **Batch analysis** — if insights are computed nightly (via a cron job), batch multiple un-analysed entries into a single prompt instead of one call per entry.
 
-5. **Model tiering** — use a smaller/cheaper model (e.g., `gemini-2.0-flash-lite`) for single-entry analysis and the full model only for weekly insight summaries.
+5. **Model tiering** — use a smaller/cheaper model (e.g., `gemini-2.0-flash-lite`) for single-entry analysis and the full `gemini-2.5-flash` model only for weekly insight summaries.
 
 ---
 
@@ -60,21 +62,24 @@
 
 Three-layer strategy:
 
-| Layer | Mechanism | Scope | TTL |
-|---|---|---|---|
-| **Database** | `analysis` field on `JournalEntry` | per entry, permanent | infinite |
-| **Application** | Node `lru-cache` keyed by text hash | in-process, fast | 1 hour |
-| **Distributed** | **Redis** with `SET nx ex` keyed by SHA-256(text) | cross-instance, shared | 24 hours |
+| Layer | Mechanism | Scope | TTL | Status |
+|---|---|---|---|---|
+| **Application** | `lru-cache` keyed by SHA-256(text) | in-process, sub-ms | 1 hour | **Implemented** |
+| **Database** | `analysis` sub-doc on `JournalEntry` | per entry, permanent | infinite | **Implemented** |
+| **Distributed** | Redis `SET nx ex` keyed by SHA-256(text) | cross-instance, shared | 24 hours | Recommended for production |
 
-Flow:
+**Current lookup flow (implemented):**
 
-1. Compute `hash = sha256(normalise(text))`.
-2. Check in-process LRU cache → hit: return immediately.
-3. Check Redis → hit: return and backfill LRU.
-4. Check MongoDB `AnalysisCache` collection → hit: return and backfill Redis + LRU.
-5. Call Gemini API, store result at all three layers before returning.
+1. Compute `key = sha256(normalise(text))`.
+2. Check in-process LRU cache (`lru-cache`, 500 entries, 1 h TTL) → hit: return immediately.
+3. If `entryId` supplied, check MongoDB `entry.analysis` → hit: return immediately.
+4. Call Gemini 2.5 Flash API.
+5. Store result in LRU cache.
+6. If `entryId` supplied, persist `analysis` on the MongoDB document.
 
-The database-level caching (step 4) is already implemented in this submission via the `entryId` field on `POST /api/journal/analyze`.
+**Recommended addition for multi-instance deployments:**
+
+Insert a Redis check between steps 2 and 3. On a miss, backfill Redis + LRU after the Gemini call. This ensures all instances share the same cache, preventing duplicate LLM calls across pods.
 
 ---
 
@@ -96,7 +101,7 @@ The database-level caching (step 4) is already implemented in this submission vi
 
 **API security**
 
-- Rate limiting is already applied globally. Add a stricter limit on the `/analyze` endpoint to prevent cost-abuse.
+- Rate limiting is applied at two levels: 100 req/15 min globally on all `/api/*` routes, and a stricter 10 req/1 min on both `/analyze` endpoints to guard against LLM cost abuse. Both are already implemented via `express-rate-limit`.
 - Sanitise all user input (text, ambience) at the route layer to prevent injection.
 
 **Audit logging**

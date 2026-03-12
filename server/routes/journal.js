@@ -1,17 +1,26 @@
 import { Router } from "express";
+import { rateLimit } from "express-rate-limit";
 import JournalEntry from "../models/JournalEntry.js";
-import { analyzeJournalText } from "../services/geminiService.js";
+import { analyzeJournalText, streamAnalysis } from "../services/geminiService.js";
 
 const router = Router();
 
 /**
- * POST /api/journal
- *
- * Creates a new journal entry for a user.
- *
- * Request body: { userId, ambience, text }
- * Response: 201 with the created entry document.
+ * Stricter rate limit applied only to the LLM analysis endpoints.
+ * 10 requests per minute per IP to guard against abuse and runaway LLM costs.
  */
+const analyzeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many analysis requests, please wait a moment." },
+});
+
+
+//  POST /api/journal
+//  Creates a new journal entry for a user.
+
 router.post("/", async (req, res) => {
   const { userId, ambience, text } = req.body;
 
@@ -23,29 +32,19 @@ router.post("/", async (req, res) => {
   res.status(201).json(entry);
 });
 
-/**
- * GET /api/journal/:userId
- *
- * Retrieves all journal entries for the given user, ordered newest first.
- *
- * Response: 200 with an array of entry documents.
- */
+// GET /api/journal/:userId
+// Fetches all journal entries for a given user, sorted by creation date (newest first).
+
 router.get("/:userId", async (req, res) => {
   const entries = await JournalEntry.find({ userId: req.params.userId }).sort({ createdAt: -1 });
   res.json(entries);
 });
 
-/**
- * POST /api/journal/analyze
- *
- * Analyses a journal text using the Gemini LLM.
- * If an `entryId` is provided, the analysis result is persisted on that entry
- * document so the same text is never re-analysed (simple LLM cost reduction).
- *
- * Request body: { text, entryId? }
- * Response: 200 with { emotion, keywords, summary }.
- */
-router.post("/analyze", async (req, res) => {
+// POST /api/journal/analyze
+// Analyzes a journal entry text using the Gemini LLM.
+// If entryId is provided, it will persist the analysis result against that entry.
+
+router.post("/analyze", analyzeLimiter, async (req, res) => {
   const { text, entryId } = req.body;
 
   if (!text) {
@@ -69,12 +68,64 @@ router.post("/analyze", async (req, res) => {
 });
 
 /**
- * GET /api/journal/insights/:userId
+ * POST /api/journal/analyze/stream
  *
- * Computes aggregated insights for a user across all their journal entries.
+ * Streams a Gemini LLM analysis response using Server-Sent Events (SSE).
  *
- * Response: 200 with { totalEntries, topEmotion, mostUsedAmbience, recentKeywords }.
+ * The client receives incremental text chunks as `event: chunk` SSE events
+ * while Gemini generates the response. Once the full response is accumulated
+ * and parsed, a final `event: done` event is sent containing the structured
+ * JSON analysis. This allows the UI to show a live "typing" effect.
+ *
+ * If a cached result (LRU or MongoDB) is available, a single `event: done`
+ * is sent immediately without streaming.
+ *
+ * Request body: { text, entryId? }
  */
+router.post("/analyze/stream", analyzeLimiter, async (req, res) => {
+  const { text, entryId } = req.body;
+
+  if (!text) {
+    return res.status(400).json({ error: "text is required." });
+  }
+
+  if (entryId) {
+    const existing = await JournalEntry.findById(entryId);
+    if (existing?.analysis) {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.write(`event: done\ndata: ${JSON.stringify(existing.analysis)}\n\n`);
+      return res.end();
+    }
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  try {
+    for await (const chunk of streamAnalysis(text)) {
+      if (chunk.startsWith("DONE:")) {
+        const analysis = JSON.parse(chunk.slice(5));
+        if (entryId) {
+          await JournalEntry.findByIdAndUpdate(entryId, { analysis });
+        }
+        res.write(`event: done\ndata: ${JSON.stringify(analysis)}\n\n`);
+      } else {
+        res.write(`event: chunk\ndata: ${JSON.stringify(chunk)}\n\n`);
+      }
+    }
+  } catch (err) {
+    res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
+  }
+
+  res.end();
+});
+
+// GET /api/journal/insights/:userId
+// Fetches aggregated insights for a user based on their journal entries.
+
 router.get("/insights/:userId", async (req, res) => {
   const entries = await JournalEntry.find({ userId: req.params.userId });
 
